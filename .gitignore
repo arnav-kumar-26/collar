@@ -1,0 +1,25 @@
+# Build output — never commit, always rebuild locally
+out/
+dist/
+
+# Dependencies — each developer runs npm install themselves
+node_modules/
+
+# VS Code extension package — built via vsce package when releasing
+*.vsix
+
+# Environment and secrets — never commit
+.env
+.env.local
+*.key
+
+# Supabase local dev (if using Supabase CLI locally)
+supabase/.branches
+supabase/.temp
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/settings.json
+.vscode/launch.json

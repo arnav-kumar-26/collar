@@ -1,0 +1,62 @@
+{
+  "name": "collar",
+  "displayName": "Collar",
+  "description": "LLM-powered code validation agent",
+  "version": "0.1.0",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Linters"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "collar",
+          "title": "Collar",
+          "icon": "$(shield)"
+        }
+      ]
+    },
+    "views": {
+      "collar": [
+        {
+          "type": "webview",
+          "id": "collar.sidebar",
+          "name": "Collar"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "collar.triggerAnalysis",
+        "title": "Collar: Run Analysis"
+      },
+      {
+        "command": "collar.signIn",
+        "title": "Collar: Sign In"
+      },
+      {
+        "command": "collar.signOut",
+        "title": "Collar: Sign Out"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "package": "vsce package"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.39.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.0"
+  }
+}

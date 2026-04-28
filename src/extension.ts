@@ -86,6 +86,16 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   )
 
+  context.subscriptions.push(
+    vscode.commands.registerCommand('collar.setCredentials', async (url: string, key: string) => {
+      await context.secrets.store(SECRET_URL, url)
+      await context.secrets.store(SECRET_KEY, key)
+      initSupabaseClient(url, key)
+      initViolationDetection(url)
+      sidebarProvider['view']?.webview.postMessage({ type: 'needsSignIn' })
+    })
+  )
+
   // ── Attempt silent session restore ────────────────────────────────────────
   await initialise(context, sidebarProvider)
 }
@@ -103,7 +113,8 @@ async function initialise(
 
   if (!url || !key) {
     // First launch — no credentials at all
-    // The sidebar will show the sign-in screen (handled by the React app)
+    // The sidebar will show the credentials screen
+    sidebarProvider['view']?.webview.postMessage({ type: 'needsCredentials' })
     return
   }
 
@@ -116,10 +127,7 @@ async function initialise(
 
   if (!user) {
     // Session expired — user needs to sign in again
-    vscode.window.showInformationMessage('Collar: Session expired. Please sign in again.', 'Sign In')
-      .then(selection => {
-        if (selection === 'Sign In') vscode.commands.executeCommand('collar.signIn')
-      })
+    sidebarProvider['view']?.webview.postMessage({ type: 'needsSignIn' })
     return
   }
 

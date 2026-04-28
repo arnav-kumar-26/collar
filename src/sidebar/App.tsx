@@ -29,6 +29,7 @@ export default function App() {
   const [branch, setBranch] = useState<string>('')
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [isReady, setIsReady] = useState(false)
+  const [authState, setAuthState] = useState<'loading' | 'needsCredentials' | 'needsSignIn' | 'ready'>('loading')
 
   // ── Message listener — receives all events from the extension host ─────────
   useEffect(() => {
@@ -42,6 +43,15 @@ export default function App() {
           setRules(message.data.rules)
           setBranch(message.data.branch)
           setIsReady(true)
+          setAuthState('ready')
+          break
+
+        case 'needsCredentials':
+          setAuthState('needsCredentials')
+          break
+
+        case 'needsSignIn':
+          setAuthState('needsSignIn')
           break
 
         case 'violationsUpdated':
@@ -68,11 +78,13 @@ export default function App() {
           break
 
         case 'authDenied':
-          // TODO: show denied screen
+          // Show denied screen
+          setAuthState('authDenied')
           break
 
         case 'authSuccess':
           setUser(message.data)
+          setAuthState('ready')
           break
       }
     }
@@ -81,19 +93,58 @@ export default function App() {
     return () => window.removeEventListener('message', handler)
   }, [])
 
-  // ── Violation counts for tab badge ────────────────────────────────────────
-  const counts = {
-    critical: violations.filter(v => v.status === 'active').length,  // TODO: filter by severity
-    major: 0,
-    minor: 0,
-  }
-
-  if (!isReady) {
+  // ── Render different screens based on auth state ────────────────────────
+  if (authState === 'loading') {
     return (
       <div style={styles.loading}>
         <span>Loading Collar...</span>
       </div>
     )
+  }
+
+  if (authState === 'needsCredentials') {
+    return <CredentialsScreen />
+  }
+
+  if (authState === 'needsSignIn') {
+    return <SignInScreen />
+  }
+
+  if (authState === 'authDenied') {
+    return <AccessDeniedScreen />
+  }
+
+  if (authState === 'ready') {
+    return <AuthenticatedApp
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      user={user}
+      violations={violations}
+      rules={rules}
+      branch={branch}
+      isAnalysing={isAnalysing}
+    />
+  }
+
+  return null
+}
+
+// ─── Authenticated App ───────────────────────────────────────────────────────
+
+function AuthenticatedApp({ activeTab, setActiveTab, user, violations, rules, branch, isAnalysing }: {
+  activeTab: TabId
+  setActiveTab: (tab: TabId) => void
+  user: User | null
+  violations: Violation[]
+  rules: Rule[]
+  branch: string
+  isAnalysing: boolean
+}) {
+  // ── Violation counts for tab badge ────────────────────────────────────────
+  const counts = {
+    critical: violations.filter(v => v.status === 'active').length,  // TODO: filter by severity
+    major: 0,
+    minor: 0,
   }
 
   const ActiveComponent = TABS.find(t => t.id === activeTab)!.component
@@ -142,6 +193,110 @@ export default function App() {
           branch={branch}
           onNavigateToChat={() => setActiveTab('chat')}
         />
+      </div>
+    </div>
+  )
+}
+
+// ─── Authentication Screens ──────────────────────────────────────────────────
+
+function CredentialsScreen() {
+  const [url, setUrl] = useState('')
+  const [key, setKey] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!url || !key) return
+
+    setIsSubmitting(true)
+    vscode.postMessage({
+      type: 'setCredentials',
+      url,
+      key
+    })
+  }
+
+  return (
+    <div style={styles.authScreen}>
+      <div style={styles.authContent}>
+        <h2 style={styles.authTitle}>Connect to Supabase</h2>
+        <p style={styles.authDescription}>
+          Enter your Supabase project URL and anon key to get started.
+        </p>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Project URL</label>
+          <input
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://your-project.supabase.co"
+            style={styles.input}
+          />
+        </div>
+
+        <div style={styles.formGroup}>
+          <label style={styles.label}>Anon Key</label>
+          <input
+            type="password"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder="eyJ..."
+            style={styles.input}
+          />
+        </div>
+
+        <button
+          onClick={handleSubmit}
+          disabled={!url || !key || isSubmitting}
+          style={{
+            ...styles.button,
+            ...(isSubmitting ? styles.buttonDisabled : {})
+          }}
+        >
+          {isSubmitting ? 'Connecting...' : 'Continue'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SignInScreen() {
+  return (
+    <div style={styles.authScreen}>
+      <div style={styles.authContent}>
+        <h2 style={styles.authTitle}>Sign In</h2>
+        <p style={styles.authDescription}>
+          Sign in with your GitHub account to access Collar.
+        </p>
+
+        <button
+          onClick={() => vscode.postMessage({ type: 'signIn' })}
+          style={styles.button}
+        >
+          Continue with GitHub
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function AccessDeniedScreen() {
+  return (
+    <div style={styles.authScreen}>
+      <div style={styles.authContent}>
+        <h2 style={styles.authTitle}>Access Denied</h2>
+        <p style={styles.authDescription}>
+          Your GitHub email is not invited to this Collar project.
+          Ask your admin to add your email to the invitations list.
+        </p>
+
+        <button
+          onClick={() => vscode.postMessage({ type: 'signIn' })}
+          style={styles.buttonSecondary}
+        >
+          Try Different Account
+        </button>
       </div>
     </div>
   )
@@ -234,5 +389,74 @@ const styles: Record<string, React.CSSProperties> = {
   content: {
     flex: 1,
     overflow: 'auto',
+  },
+  authScreen: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    padding: 20,
+  },
+  authContent: {
+    textAlign: 'center',
+    maxWidth: 300,
+  },
+  authTitle: {
+    fontSize: 18,
+    fontWeight: 600,
+    marginBottom: 8,
+    color: 'var(--vscode-foreground)',
+  },
+  authDescription: {
+    fontSize: 13,
+    color: 'var(--vscode-descriptionForeground)',
+    marginBottom: 20,
+    lineHeight: 1.4,
+  },
+  formGroup: {
+    marginBottom: 16,
+    textAlign: 'left',
+  },
+  label: {
+    display: 'block',
+    fontSize: 12,
+    fontWeight: 500,
+    marginBottom: 4,
+    color: 'var(--vscode-foreground)',
+  },
+  input: {
+    width: '100%',
+    padding: '8px 12px',
+    border: '1px solid var(--vscode-input-border)',
+    borderRadius: 3,
+    background: 'var(--vscode-input-background)',
+    color: 'var(--vscode-input-foreground)',
+    fontSize: 13,
+  },
+  button: {
+    width: '100%',
+    padding: '10px 16px',
+    border: 'none',
+    borderRadius: 3,
+    background: 'var(--vscode-button-background)',
+    color: 'var(--vscode-button-foreground)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  buttonSecondary: {
+    width: '100%',
+    padding: '10px 16px',
+    border: '1px solid var(--vscode-button-border)',
+    borderRadius: 3,
+    background: 'var(--vscode-button-secondaryBackground)',
+    color: 'var(--vscode-button-secondaryForeground)',
+    fontSize: 13,
+    fontWeight: 500,
+    cursor: 'pointer',
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
   },
 }

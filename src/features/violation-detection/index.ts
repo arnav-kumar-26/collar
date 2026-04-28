@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
 import { eventBus } from '../../core/eventBus'
-import { db } from '../../services/db'
-import { AnalysisPayload, AnalysisResult, LLMViolation, Violation } from '../../types'
+import { db } from '../../services/supabase/db'
+import { AnalysisPayload, AnalysisResult, LLMViolation, Violation } from '../../core/models'
 import { getCurrentBranch, getCurrentCommit } from '../../core/gitTracker'
 
 let supabaseUrl = ''
@@ -86,7 +86,7 @@ async function runAnalysis(payload: AnalysisPayload): Promise<void> {
 async function callEdgeFunction(payload: AnalysisPayload): Promise<AnalysisResult> {
   const url = `${supabaseUrl}/functions/v1/analyse`
 
-  const { getSupabaseClient } = await import('../../core/supabase')
+  const { getSupabaseClient } = await import('../../services/supabase/client')
   const session = await getSupabaseClient().auth.getSession()
   const token = session.data.session?.access_token
 

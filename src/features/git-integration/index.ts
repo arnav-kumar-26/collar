@@ -1,6 +1,6 @@
 import { eventBus } from '../../core/eventBus'
-import { db } from '../../services/db'
-import { Violation } from '../../types'
+import { db } from '../../services/supabase/db'
+import { Violation } from '../../core/models'
 
 // ─── Git Integration ──────────────────────────────────────────────────────────
 // Listens to branch and commit events from the git tracker.

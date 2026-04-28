@@ -1,4 +1,4 @@
-import { AnalysisResult, Rule, Violation } from '../types'
+import { AnalysisResult, Rule, Violation } from './models'
 
 // ─── Event Map ───────────────────────────────────────────────────────────────
 // All events and their payloads defined here.

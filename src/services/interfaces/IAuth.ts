@@ -1,5 +1,5 @@
 import * as vscode from 'vscode'
-import { User } from '../../types'
+import { User } from '../../core/models'
 
 // ─── IAuth ───────────────────────────────────────────────────────────────────
 // Identity management. Features and the extension host call these methods.

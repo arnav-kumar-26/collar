@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { eventBus } from '../../core/eventBus'
-import { Violation } from '../../types'
+import { Violation } from '../../core/models'
 
 // ─── Status Bar ───────────────────────────────────────────────────────────────
 

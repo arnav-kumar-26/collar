@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Rule, RuleCategory, User } from '../../types'
+import { Rule, RuleCategory, User } from '../../core/models'
 
 interface Props {
   violations: never[]

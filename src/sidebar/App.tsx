@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { vscode } from './index'
-import { ExtensionMessage, User, Violation, Rule } from '../types'
+import { ExtensionMessage, User, Violation, Rule } from '../core/models'
 import Chat from './tabs/Chat'
 import Violations from './tabs/Violations'
 import Rules from './tabs/Rules'

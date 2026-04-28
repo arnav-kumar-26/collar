@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { vscode } from '../index'
-import { User, Violation, Rule } from '../../types'
+import { User, Violation, Rule } from '../../core/models'
 
 interface Props {
   violations: Violation[]

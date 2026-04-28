@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { eventBus } from '../../core/eventBus'
-import { Violation, Severity } from '../../types'
+import { Violation, Severity } from '../../core/models'
 
 // ─── Decoration Types ─────────────────────────────────────────────────────────
 // One decoration type per severity. Created once, reused on every update.

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Violation, Rule, User } from '../../types'
+import { Violation, Rule, User } from '../../core/models'
 
 interface Props {
   violations: Violation[]

@@ -1,4 +1,4 @@
-import { Rule, Violation } from '../../types'
+import { Rule, Violation } from '../../core/models'
 
 // ─── IRealtime ───────────────────────────────────────────────────────────────
 // WebSocket subscription management.

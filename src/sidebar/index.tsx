@@ -1,7 +1,7 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import { ExtensionMessage, WebviewMessage } from '../types'
+import { ExtensionMessage, WebviewMessage } from '../core/models'
 
 // ─── VS Code API ──────────────────────────────────────────────────────────────
 // The acquireVsCodeApi() function is injected by the webview runtime.

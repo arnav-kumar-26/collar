@@ -1,4 +1,4 @@
-import { Rule, Violation, Snapshot, Commit, Branch } from '../../types'
+import { Rule, Violation, Snapshot, Commit, Branch } from '../../core/models'
 
 // ─── IDatabase ───────────────────────────────────────────────────────────────
 // Every method a feature can call against the data layer.

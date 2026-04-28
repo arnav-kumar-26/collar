@@ -1,6 +1,6 @@
-import { IRealtime, Unsubscribe } from './interfaces/IRealtime'
-import { getSupabaseClient } from '../core/supabase'
-import { Rule, Violation } from '../types'
+import { IRealtime, Unsubscribe } from '../interfaces/IRealtime'
+import { getSupabaseClient } from './client'
+import { Rule, Violation } from '../../core/models'
 
 // ─── SupabaseRealtime ─────────────────────────────────────────────────────────
 // Manages persistent WebSocket subscriptions via Supabase Realtime.

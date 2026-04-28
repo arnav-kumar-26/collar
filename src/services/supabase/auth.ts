@@ -1,7 +1,7 @@
 import * as vscode from 'vscode'
-import { IAuth } from './interfaces/IAuth'
-import { getSupabaseClient } from '../core/supabase'
-import { User } from '../types'
+import { IAuth } from '../interfaces/IAuth'
+import { getSupabaseClient } from './client'
+import { User } from '../../core/models'
 
 const SECRET_JWT = 'collar.supabaseJWT'
 const SECRET_REFRESH = 'collar.supabaseRefreshToken'

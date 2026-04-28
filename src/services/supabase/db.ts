@@ -1,6 +1,6 @@
-import { IDatabase } from './interfaces/IDatabase'
-import { getSupabaseClient } from '../core/supabase'
-import { Rule, Violation, Snapshot, Commit, Branch } from '../types'
+import { IDatabase } from '../interfaces/IDatabase'
+import { getSupabaseClient } from './client'
+import { Rule, Violation, Snapshot, Commit, Branch } from '../../core/models'
 
 // ─── SupabaseDatabase ────────────────────────────────────────────────────────
 // Concrete implementation of IDatabase backed by Supabase + PostgREST.

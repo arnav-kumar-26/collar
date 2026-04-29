@@ -1,5 +1,6 @@
 {
   "name": "collar",
+  "publisher": "collar",
   "displayName": "Collar",
   "description": "LLM-powered code validation agent",
   "version": "0.1.0",

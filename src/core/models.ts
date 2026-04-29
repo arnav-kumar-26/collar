@@ -6,6 +6,7 @@ export type ViolationStatus = 'active' | 'resolved' | 'suppressed'
 export type SnapshotTrigger = 'commit' | 'rule_update' | 'manual'
 export type UserRole = 'admin' | 'author' | 'developer'
 export type BranchStatus = 'active' | 'merged' | 'deleted'
+export type LLMProvider = 'gemini' | 'anthropic'
 
 // ─── Domain Models ───────────────────────────────────────────────────────────
 
@@ -96,7 +97,8 @@ export interface AnalysisPayload {
   file_path: string
   branch: string
   commit_sha: string | null
-  trigger: SnapshotTrigger | 'save'   // save = debounced, not written to DB
+  trigger: SnapshotTrigger | 'save' //save is debounced
+  provider?: LLMProvider        // ← add this line
 }
 
 // ─── Webview Messaging ───────────────────────────────────────────────────────

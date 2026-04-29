@@ -23,7 +23,7 @@ export class SupabaseAuth implements IAuth {
       provider: 'github',
       options: {
         scopes: 'user:email',
-        redirectTo: 'vscode://collar.extension/auth/callback',
+        redirectTo: 'vscode://collar.collar/auth/callback',
         skipBrowserRedirect: false,
       },
     })

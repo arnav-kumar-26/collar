@@ -22,6 +22,7 @@ export function registerViolationDetection(): void {
       branch: getCurrentBranch() ?? 'unknown',
       commit_sha: getCurrentCommit() ?? null,
       trigger: 'save',
+      provider: 'gemini',
     })
   })
 
@@ -35,6 +36,7 @@ export function registerViolationDetection(): void {
         branch,
         commit_sha: sha,
         trigger: 'commit',
+        provider: 'gemini',
       })
     }
   })
@@ -51,6 +53,7 @@ export function registerViolationDetection(): void {
         branch,
         commit_sha: sha,
         trigger: 'rule_update',
+        provider: 'gemini',
       })
     }
   })

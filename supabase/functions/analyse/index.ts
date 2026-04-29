@@ -35,6 +35,7 @@ interface AnalysisPayload {
   branch: string
   commit_sha: string | null
   trigger: 'commit' | 'rule_update' | 'manual' | 'save'
+  provider?: 'gemini' | 'anthropic'    // ← add this line
 }
 
 interface LLMViolation {
@@ -90,12 +91,12 @@ serve(async (req: Request) => {
     if (rulesError || !rules) return jsonError('Failed to fetch rules', 500)
 
     // ── Call LLM ──────────────────────────────────────────────────────────
-    const provider = Deno.env.get('LLM_PROVIDER') ?? 'gemini'
+    const activeProvider = payload.provider ?? 'gemini'
     const prompt = buildPrompt(rules, file_path, file_contents)
 
     let rawText: string
     try {
-      rawText = await callLLM(provider, prompt)
+      rawText = await callLLM(activeProvider, prompt)
     } catch (err) {
       return jsonError(`LLM call failed: ${err.message}`, 502)
     }

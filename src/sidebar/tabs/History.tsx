@@ -1,9 +1,9 @@
 import React from 'react'
-import { User } from '../../core/models'
+import { Violation, Rule, User } from '../../core/models'
 
 interface Props {
-  violations: never[]
-  rules: never[]
+  violations: Violation[]
+  rules: Rule[]
   user: User | null
   branch: string
   onNavigateToChat: () => void

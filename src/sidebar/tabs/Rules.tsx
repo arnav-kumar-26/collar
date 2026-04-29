@@ -1,8 +1,8 @@
 import React, { useState } from 'react'
-import { Rule, RuleCategory, User } from '../../core/models'
+import { Rule, RuleCategory, User, Violation } from '../../core/models'
 
 interface Props {
-  violations: never[]
+  violations: Violation[]
   rules: Rule[]
   user: User | null
   branch: string

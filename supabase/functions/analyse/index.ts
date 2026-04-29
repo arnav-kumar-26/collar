@@ -9,11 +9,25 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 //
 // Writes to Supabase only when trigger is 'commit', 'manual', or 'rule_update'.
 // Debounced saves ('save') return the violations but write nothing.
+//
+// Switch LLM provider via Supabase secret — no redeployment needed:
+//   supabase secrets set LLM_PROVIDER=gemini
+//   supabase secrets set LLM_PROVIDER=anthropic  ← default if not set
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
-const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+// ─── Provider Config ──────────────────────────────────────────────────────────
+
+const PROVIDERS = {
+  anthropic: {
+    url: 'https://api.anthropic.com/v1/messages',
+    model: 'claude-sonnet-4-20250514',
+  },
+  gemini: {
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+  },
+}
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AnalysisPayload {
   file_contents: string
@@ -32,8 +46,9 @@ interface LLMViolation {
   severity: 'critical' | 'major' | 'minor'
 }
 
+// ─── Main Handler ─────────────────────────────────────────────────────────────
+
 serve(async (req: Request) => {
-  // ── CORS ────────────────────────────────────────────────────────────────
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       headers: {
@@ -46,9 +61,7 @@ serve(async (req: Request) => {
   try {
     // ── Auth ───────────────────────────────────────────────────────────────
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
-      return jsonError('Missing Authorization header', 401)
-    }
+    if (!authHeader) return jsonError('Missing Authorization header', 401)
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -56,15 +69,11 @@ serve(async (req: Request) => {
       { global: { headers: { Authorization: authHeader } } }
     )
 
-    // Verify the caller is an authenticated team member
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     if (authError || !user) return jsonError('Unauthorised', 401)
 
     const { data: userRecord } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', user.id)
-      .single()
+      .from('users').select('id').eq('id', user.id).single()
 
     if (!userRecord) return jsonError('Not a team member', 403)
 
@@ -80,40 +89,23 @@ serve(async (req: Request) => {
 
     if (rulesError || !rules) return jsonError('Failed to fetch rules', 500)
 
-    // ── Build prompt ───────────────────────────────────────────────────────
+    // ── Call LLM ──────────────────────────────────────────────────────────
+    const provider = Deno.env.get('LLM_PROVIDER') ?? 'gemini'
     const prompt = buildPrompt(rules, file_path, file_contents)
 
-    // ── Call Claude ────────────────────────────────────────────────────────
-    const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY')
-    if (!anthropicKey) return jsonError('LLM not configured', 500)
-
-    const llmResponse = await fetch(ANTHROPIC_API_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': anthropicKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 2048,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-    })
-
-    if (!llmResponse.ok) {
-      const err = await llmResponse.text()
-      return jsonError(`LLM call failed: ${err}`, 502)
+    let rawText: string
+    try {
+      rawText = await callLLM(provider, prompt)
+    } catch (err) {
+      return jsonError(`LLM call failed: ${err.message}`, 502)
     }
 
-    const llmData = await llmResponse.json()
-    const rawText: string = llmData.content[0]?.text ?? '{}'
-
     // ── Parse LLM response ─────────────────────────────────────────────────
+    // Strip markdown fences defensively — some models add them despite instructions
     let violations: LLMViolation[] = []
     try {
-      const parsed = JSON.parse(rawText)
-      violations = parsed.violations ?? []
+      const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
+      violations = JSON.parse(cleaned).violations ?? []
     } catch {
       console.error('[Collar] Failed to parse LLM response:', rawText)
       violations = []
@@ -122,8 +114,7 @@ serve(async (req: Request) => {
     // ── Write to Supabase (only on persistent triggers) ────────────────────
     let snapshotId: string | null = null
 
-    if (trigger !== 'save' && violations !== undefined) {
-      // Write commit record if this is a real commit
+    if (trigger !== 'save') {
       let commitId: string | null = null
 
       if (trigger === 'commit' && commit_sha) {
@@ -141,9 +132,8 @@ serve(async (req: Request) => {
         commitId = commitRecord?.id ?? null
       }
 
-      // Count violations by severity
       const counts = violations.reduce(
-        (acc, v) => {
+        (acc: any, v: LLMViolation) => {
           acc[v.severity] = (acc[v.severity] ?? 0) + 1
           acc.total++
           return acc
@@ -151,26 +141,17 @@ serve(async (req: Request) => {
         { total: 0, critical: 0, major: 0, minor: 0 }
       )
 
-      // Write snapshot
       const { data: snapshot } = await supabase
         .from('snapshots')
-        .insert({
-          commit_id: commitId,
-          trigger,
-          total: counts.total,
-          critical: counts.critical,
-          major: counts.major,
-          minor: counts.minor,
-        })
+        .insert({ commit_id: commitId, trigger, ...counts })
         .select('id')
         .single()
 
       snapshotId = snapshot?.id ?? null
 
-      // Write violations
       if (snapshotId && violations.length > 0) {
         await supabase.from('violations').insert(
-          violations.map(v => ({
+          violations.map((v: LLMViolation) => ({
             snapshot_id: snapshotId,
             rule_id: v.rule_id,
             file_path,
@@ -186,15 +167,9 @@ serve(async (req: Request) => {
       }
     }
 
-    // ── Respond ────────────────────────────────────────────────────────────
     return new Response(
       JSON.stringify({ violations, snapshot_id: snapshotId }),
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Access-Control-Allow-Origin': '*',
-        }
-      }
+      { headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' } }
     )
 
   } catch (err) {
@@ -203,10 +178,61 @@ serve(async (req: Request) => {
   }
 })
 
+// ─── LLM Providers ───────────────────────────────────────────────────────────
+
+async function callLLM(provider: string, prompt: string): Promise<string> {
+  switch (provider) {
+    case 'anthropic': return callAnthropic(prompt)
+    case 'gemini':    return callGemini(prompt)
+    default:          throw new Error(`Unknown LLM_PROVIDER: "${provider}". Valid options: anthropic, gemini`)
+  }
+}
+
+async function callAnthropic(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY secret is not set in Supabase')
+
+  const res = await fetch(PROVIDERS.anthropic.url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: PROVIDERS.anthropic.model,
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  })
+
+  if (!res.ok) throw new Error(await res.text())
+  const data = await res.json()
+  return data.content[0]?.text ?? '{}'
+}
+
+async function callGemini(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('GEMINI_API_KEY')
+  if (!apiKey) throw new Error('GEMINI_API_KEY secret is not set in Supabase')
+
+  const res = await fetch(`${PROVIDERS.gemini.url}?key=${apiKey}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.1 },
+    }),
+  })
+
+  if (!res.ok) throw new Error(await res.text())
+  const data = await res.json()
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
+}
+
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
 function buildPrompt(rules: any[], filePath: string, fileContents: string): string {
-  const rulesText = rules.map(r =>
+  const rulesText = rules.map((r: any) =>
     `[${r.id}] (${r.category}, ${r.severity})\n${r.name}: ${r.description}`
   ).join('\n\n')
 
@@ -245,7 +271,7 @@ Respond with ONLY a valid JSON object. No preamble, no explanation, no markdown 
       "line_start": 42,
       "line_end": 42,
       "code_excerpt": "processPayment(user, cart)",
-      "explanation": "processPayment is called without first checking the consent flag. Line 38 sets consentFlag but it is never verified before this call.",
+      "explanation": "processPayment is called without first checking the consent flag.",
       "severity": "critical"
     }
   ]
@@ -259,10 +285,7 @@ function jsonError(message: string, status: number): Response {
     JSON.stringify({ error: message }),
     {
       status,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      }
+      headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' }
     }
   )
 }

@@ -1,5 +1,4 @@
 import * as vscode from 'vscode'
-import * as path from 'path'
 import { eventBus } from '../core/eventBus'
 import { ExtensionMessage, WebviewMessage, User, Violation, Rule } from '../core/models'
 

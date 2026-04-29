@@ -12,7 +12,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ANTHROPIC_API_URL = 'https://api.anthropic.com/v1/messages'
-const MODEL = 'claude-sonnet-4-20250514'
+const ANTHROPIC_MODEL = 'claude-sonnet-4-20250514'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
 
 interface AnalysisPayload {
   file_contents: string
@@ -94,7 +95,7 @@ serve(async (req: Request) => {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: MODEL,
+        model: ANTHROPIC_MODEL,
         max_tokens: 2048,
         messages: [{ role: 'user', content: prompt }],
       }),

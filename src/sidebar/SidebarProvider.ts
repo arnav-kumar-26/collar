@@ -72,8 +72,8 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         vscode.commands.executeCommand('collar.signIn')
         break
 
-      case 'setCredentials':
-        vscode.commands.executeCommand('collar.setCredentials', message.url, message.key)
+      case 'signOut':
+        vscode.commands.executeCommand('collar.signOut')
         break
 
       case 'chatMessage':

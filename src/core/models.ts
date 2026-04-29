@@ -110,8 +110,6 @@ export type ExtensionMessage =
   | { type: 'analysisStarted' }
   | { type: 'authDenied' }
   | { type: 'authSuccess'; data: User }
-  | { type: 'needsCredentials' }
-  | { type: 'needsSignIn' }
 
 // Webview → Extension
 export type WebviewMessage =
@@ -120,4 +118,3 @@ export type WebviewMessage =
   | { type: 'triggerAnalysis' }
   | { type: 'signIn' }
   | { type: 'signOut' }
-  | { type: 'setCredentials'; url: string; key: string }

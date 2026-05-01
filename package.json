@@ -45,6 +45,10 @@
       {
         "command": "collar.signOut",
         "title": "Collar: Sign Out"
+      },
+      {
+        "command": "collar.clearCredentials",
+        "title": "Collar: Clear Credentials"
       }
     ]
   },

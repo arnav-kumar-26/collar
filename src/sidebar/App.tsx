@@ -29,6 +29,7 @@ export default function App() {
   const [branch, setBranch] = useState<string>('')
   const [isAnalysing, setIsAnalysing] = useState(false)
   const [isReady, setIsReady] = useState(false)
+  const [authError, setAuthError] = useState<string | null>(null)
 
   // ── Message listener — receives all events from the extension host ─────────
   useEffect(() => {
@@ -69,10 +70,17 @@ export default function App() {
 
         case 'authDenied':
           // TODO: show denied screen
+          setIsReady(true)
+          setAuthError('Access denied. Ask your admin to add your GitHub email.')
           break
+        case 'notSignedIn':
+          setIsReady(true)
+          setAuthError(null)    // no error, just not signed in yet
+          break 
 
         case 'authSuccess':
           setUser(message.data)
+          setIsReady(true) 
           break
       }
     }
@@ -89,12 +97,16 @@ export default function App() {
   }
 
   if (!isReady) {
-    return (
-      <div style={styles.loading}>
-        <span>Loading Collar...</span>
-      </div>
-    )
-  }
+  return (
+    <div style={styles.loading}>
+      <span>Loading Collar...</span>
+    </div>
+  )
+}
+
+if (!user) {
+  return <SignIn error={authError}/>
+}
 
   const ActiveComponent = TABS.find(t => t.id === activeTab)!.component
 
@@ -145,6 +157,84 @@ export default function App() {
       </div>
     </div>
   )
+}
+
+function SignIn({ error }: { error: string | null }) {
+  const handleSignIn = () => {
+    vscode.postMessage({ type: 'signIn' })
+  }
+
+  return (
+    <div style={signInStyles.root}>
+      <div style={signInStyles.logo}>⬡</div>
+      <h2 style={signInStyles.title}>Collar</h2>
+      <p style={signInStyles.subtitle}>
+        LLM-powered code validation for your team
+      </p>
+      {error && (
+        <p style={signInStyles.error}>{error}</p>
+      )}
+      <button style={signInStyles.button} onClick={handleSignIn}>
+        Sign in with GitHub
+      </button>
+      <p style={signInStyles.hint}>
+        You need an invitation from your admin to access Collar.
+      </p>
+    </div>
+  )
+}
+
+const signInStyles: Record<string, React.CSSProperties> = {
+  root: {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: '100vh',
+    padding: '0 24px',
+    gap: 12,
+    textAlign: 'center',
+  },
+  error: {
+    fontSize: 11,
+    color: 'var(--vscode-errorForeground)',
+    margin: 0,
+    lineHeight: 1.5,
+    textAlign: 'center',
+  },
+  logo: {
+    fontSize: 48,
+    lineHeight: 1,
+    marginBottom: 8,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: 700,
+    margin: 0,
+  },
+  subtitle: {
+    fontSize: 12,
+    opacity: 0.6,
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  button: {
+    marginTop: 16,
+    padding: '8px 20px',
+    background: 'var(--vscode-button-background)',
+    color: 'var(--vscode-button-foreground)',
+    border: 'none',
+    borderRadius: 4,
+    fontSize: 13,
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  hint: {
+    fontSize: 11,
+    opacity: 0.4,
+    margin: 0,
+    lineHeight: 1.5,
+  },
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

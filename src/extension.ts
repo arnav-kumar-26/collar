@@ -37,7 +37,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
         if (!user) {
           // DB trigger rejected sign-in — no invitation found
-          sidebarProvider['view']?.webview.postMessage({ type: 'authDenied' })
+          sidebarProvider.sendToWebview({ type: 'authDenied' })
           vscode.window.showErrorMessage(
             'Collar: Access denied. Ask your admin to add your GitHub email to the invitation list.'
           )
@@ -45,7 +45,7 @@ export async function activate(context: vscode.ExtensionContext) {
         }
 
         sidebarProvider.setUser(user)
-        sidebarProvider['view']?.webview.postMessage({ type: 'authSuccess', data: user })
+        sidebarProvider.sendToWebview({ type: 'authSuccess', data: user })
         await startPostAuthFlow(context, sidebarProvider, user.id)
       }
     })
@@ -54,14 +54,15 @@ export async function activate(context: vscode.ExtensionContext) {
   // ── Commands ─────────────────────────────────────────────────────────────
   context.subscriptions.push(
     vscode.commands.registerCommand('collar.signIn', async () => {
-      const url = await context.secrets.get(SECRET_URL)
-      const key = await context.secrets.get(SECRET_KEY)
+    const url = await context.secrets.get(SECRET_URL)
+    const key = await context.secrets.get(SECRET_KEY)
 
-      if (!url || !key) {
-        await promptForCredentials(context)
-      }
-      await auth.signIn()
-    })
+    if (!url || !key) {
+      const success = await promptForCredentials(context)
+      if (!success) return    // ← stop here if user cancelled
+    }
+    await auth.signIn()
+  })
   )
 
   context.subscriptions.push(
@@ -86,6 +87,16 @@ export async function activate(context: vscode.ExtensionContext) {
     })
   )
 
+  context.subscriptions.push(
+  vscode.commands.registerCommand('collar.clearCredentials', async () => {
+    await context.secrets.delete('collar.supabaseUrl')
+    await context.secrets.delete('collar.supabaseAnonKey')
+    await context.secrets.delete('collar.supabaseJWT')
+    await context.secrets.delete('collar.supabaseRefreshToken')
+    vscode.window.showInformationMessage('Collar: Credentials cleared')
+  })
+)
+
   // ── Attempt silent session restore ────────────────────────────────────────
   await initialise(context, sidebarProvider)
 }
@@ -101,9 +112,14 @@ async function initialise(
   const url = await context.secrets.get(SECRET_URL)
   const key = await context.secrets.get(SECRET_KEY)
 
+  console.log('[Collar] URL found:', !!url)      // ← add
+  console.log('[Collar] Key found:', !!key)    
+
   if (!url || !key) {
     // First launch — no credentials at all
     // The sidebar will show the sign-in screen (handled by the React app)
+    console.log('[Collar] No credentials — waiting for sign in')
+    sidebarProvider.sendToWebview({ type: 'notSignedIn' })
     return
   }
 
@@ -113,8 +129,11 @@ async function initialise(
 
   // Try to restore the previous session
   const user = await auth.restoreSession(context.secrets)
+  console.log('[Collar] Session restored:', !!user)
 
   if (!user) {
+    console.log('[Collar] No session — prompting sign in')
+    sidebarProvider.sendToWebview({ type: 'notSignedIn' })
     // Session expired — user needs to sign in again
     vscode.window.showInformationMessage('Collar: Session expired. Please sign in again.', 'Sign In')
       .then(selection => {

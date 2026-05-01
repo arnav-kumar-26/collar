@@ -10,6 +10,15 @@ import { ExtensionMessage, WebviewMessage, User, Violation, Rule } from '../core
 export class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView
   private extensionUri: vscode.Uri
+  private pendingMessage: ExtensionMessage | null = null
+
+  sendToWebview(message: ExtensionMessage): void {
+  if (this.view) {
+    this.view.webview.postMessage(message)
+  } else {
+    this.pendingMessage = message  // store until view is ready
+  }
+}
 
   // State that the sidebar needs on first load
   private state: {
@@ -26,22 +35,27 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 
   // Called by VS Code when the sidebar first becomes visible
   resolveWebviewView(webviewView: vscode.WebviewView): void {
-    this.view = webviewView
+  this.view = webviewView
 
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [
-        vscode.Uri.joinPath(this.extensionUri, 'out'),
-      ],
-    }
-
-    webviewView.webview.html = this.getHtml(webviewView.webview)
-
-    // Listen to messages from the React sidebar
-    webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
-      this.handleWebviewMessage(message)
-    })
+  webviewView.webview.options = {
+    enableScripts: true,
+    localResourceRoots: [
+      vscode.Uri.joinPath(this.extensionUri, 'out'),
+    ],
   }
+
+  webviewView.webview.html = this.getHtml(webviewView.webview)
+
+  webviewView.webview.onDidReceiveMessage((message: WebviewMessage) => {
+    this.handleWebviewMessage(message)
+  })
+
+  // Send any message that was queued before the view was ready
+  if (this.pendingMessage) {
+    this.view.webview.postMessage(this.pendingMessage)
+    this.pendingMessage = null
+  }
+}
 
   // ── Inbound (Webview → Extension) ─────────────────────────────────────────
 
@@ -49,7 +63,6 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
     switch (message.type) {
 
       case 'ready':
-        // Webview has loaded and is ready to receive data
         if (this.state.user) {
           this.send({
             type: 'init',
@@ -60,6 +73,9 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
               branch: this.state.branch,
             }
           })
+        } else {
+          // No user — tell the sidebar to show the sign in screen
+          this.send({ type: 'notSignedIn' })
         }
         break
 
@@ -113,8 +129,19 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   // ── Public setters (called from extension.ts) ─────────────────────────────
 
   setUser(user: User): void {
-    this.state.user = user
+  this.state.user = user
+  if (this.view) {
+    this.send({
+      type: 'init',
+      data: {
+        user: this.state.user,
+        violations: this.state.violations,
+        rules: this.state.rules,
+        branch: this.state.branch,
+      }
+    })
   }
+}
 
   setRules(rules: Rule[]): void {
     this.state.rules = rules

@@ -19,16 +19,22 @@ export class SupabaseAuth implements IAuth {
   // Opens GitHub in the browser. The OS will redirect back to vscode:// when done.
   // The URI handler in extension.ts catches the redirect and calls handleOAuthCallback.
   async signIn(): Promise<void> {
-    const { error } = await getSupabaseClient().auth.signInWithOAuth({
+     console.log('[Collar] Attempting sign in...') 
+    const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
       provider: 'github',
       options: {
         scopes: 'user:email',
         redirectTo: 'vscode://collar.collar/auth/callback',
-        skipBrowserRedirect: false,
+        skipBrowserRedirect: true,
       },
     })
-
+    console.log('[Collar] Sign in error:', error) 
     if (error) throw new Error(`Sign in failed: ${error.message}`)
+
+    if (data.url) {
+    console.log('[Collar] Opening browser:', data.url)
+    await vscode.env.openExternal(vscode.Uri.parse(data.url))
+  }
   }
 
   // Clears the Supabase session and removes stored credentials.

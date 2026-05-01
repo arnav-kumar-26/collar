@@ -111,6 +111,7 @@ export type ExtensionMessage =
   | { type: 'branchChanged'; data: string }
   | { type: 'analysisStarted' }
   | { type: 'authDenied' }
+  | { type: 'notSignedIn' }
   | { type: 'authSuccess'; data: User }
 
 // Webview → Extension

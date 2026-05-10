@@ -49,6 +49,10 @@
       {
         "command": "collar.clearCredentials",
         "title": "Collar: Clear Credentials"
+      },
+      {
+        "command": "collar.autoFix",
+        "title": "Collar: Auto-fix violations"
       }
     ]
   },

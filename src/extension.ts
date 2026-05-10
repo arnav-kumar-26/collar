@@ -2,7 +2,7 @@ import * as vscode from 'vscode'
 import { initSupabaseClient } from './services/supabase/client'
 import { startFileWatcher } from './core/fileWatcher'
 import { startGitTracker, getCurrentBranch } from './core/gitTracker'
-import { registerViolationDetection, initViolationDetection } from './features/violation-detection/index'
+import { registerViolationDetection, initViolationDetection, runInitialScan, runAutoFix, initRules } from './features/violation-detection/index'
 import { registerHighlighter, disposeHighlighter } from './features/violation-detection/highlighter'
 import { registerNotifications, initStatusBar } from './features/notifications/index'
 import { registerGitIntegration } from './features/git-integration/index'
@@ -44,10 +44,9 @@ export async function activate(context: vscode.ExtensionContext) {
           return
         }
 
-        sidebarProvider.setUser(user)
-        sidebarProvider.sendToWebview({ type: 'authSuccess', data: user })
         await startPostAuthFlow(context, sidebarProvider, user.id)
-      }
+        sidebarProvider.setUser(user)
+        sidebarProvider.sendToWebview({ type: 'authSuccess', data: user })      }
     })
   )
 
@@ -58,7 +57,7 @@ export async function activate(context: vscode.ExtensionContext) {
     const key = await context.secrets.get(SECRET_KEY)
 
     if (!url || !key) {
-      const success = await promptForCredentials(context)
+      const success = await promptForCredentials(context, sidebarProvider)
       if (!success) return    // ← stop here if user cancelled
     }
     await auth.signIn()
@@ -80,12 +79,18 @@ export async function activate(context: vscode.ExtensionContext) {
         return
       }
 
-      eventBus.emit('file:saved', {
+      eventBus.emit('file:manual', {
         filePath: editor.document.uri.fsPath,
         contents: editor.document.getText(),
       })
-    })
+  })
   )
+
+    context.subscriptions.push(
+    vscode.commands.registerCommand('collar.autoFix', async () => {
+      await runAutoFix()
+    })
+    )
 
   context.subscriptions.push(
   vscode.commands.registerCommand('collar.clearCredentials', async () => {
@@ -126,6 +131,7 @@ async function initialise(
   // Credentials exist — boot the Supabase client
   initSupabaseClient(url, key)
   initViolationDetection(url)
+  sidebarProvider.setSupabaseUrl(url)
 
   // Try to restore the previous session
   const user = await auth.restoreSession(context.secrets)
@@ -158,11 +164,12 @@ async function startPostAuthFlow(
   // Fetch initial data
   const [rules, branch] = await Promise.all([
     db.getRules(),
-    Promise.resolve(getCurrentBranch() ?? 'main'),
+    Promise.resolve(getCurrentBranch() ?? 'none'),
   ])
 
-  sidebarProvider.setRules(rules)
-  sidebarProvider.setBranch(branch)
+    sidebarProvider.setRules(rules)
+    sidebarProvider.setBranch(branch)
+    initRules(rules)
 
   // Register all features
   registerViolationDetection()
@@ -181,7 +188,11 @@ async function startPostAuthFlow(
   context.subscriptions.push(...gitDisposables)
 
   // Start realtime subscriptions
-  realtime.subscribeToRuleUpdates(rule => {
+  realtime.subscribeToRuleUpdates(async rule => {
+    // Refresh the full rules list from Supabase so severity lookups stay accurate
+    const updatedRules = await db.getRules()
+    initRules(updatedRules)
+    sidebarProvider.setRules(updatedRules)
     eventBus.emit('rule:updated', { rule })
     vscode.window.showInformationMessage(`Collar: Rule ${rule.id} was updated`)
   })
@@ -190,12 +201,15 @@ async function startPostAuthFlow(
     eventBus.emit('violation:detected', { violations })
   })
 
+  console.log('[Collar] Starting initial workspace scan...')
+  await runInitialScan()
+
   console.log('[Collar] Ready')
 }
 
 // ─── Credential Prompt ────────────────────────────────────────────────────────
 
-async function promptForCredentials(context: vscode.ExtensionContext): Promise<boolean> {
+async function promptForCredentials(context: vscode.ExtensionContext, sidebarProvider: SidebarProvider): Promise<boolean> {
   const url = await vscode.window.showInputBox({
     prompt: 'Enter your Supabase project URL',
     placeHolder: 'https://your-project.supabase.co',
@@ -218,6 +232,7 @@ async function promptForCredentials(context: vscode.ExtensionContext): Promise<b
 
   initSupabaseClient(url, key)
   initViolationDetection(url)
+  sidebarProvider.setSupabaseUrl(url)
 
   return true
 }

@@ -11,6 +11,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView
   private extensionUri: vscode.Uri
   private pendingMessage: ExtensionMessage | null = null
+  private supabaseUrl: string = ''
 
   sendToWebview(message: ExtensionMessage): void {
   if (this.view) {
@@ -108,8 +109,12 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
   private registerEventBusListeners(): void {
 
     eventBus.on('violation:detected', ({ violations }) => {
-      this.state.violations = violations
-      this.send({ type: 'violationsUpdated', data: violations })
+      const incomingFiles = new Set(violations.map(v => v.file_path))
+      this.state.violations = [
+        ...this.state.violations.filter(v => !incomingFiles.has(v.file_path)),
+        ...violations,
+      ]
+      this.send({ type: 'violationsUpdated', data: this.state.violations })
     })
 
     eventBus.on('rule:updated', ({ rule }) => {
@@ -141,6 +146,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
       }
     })
   }
+}
+
+setSupabaseUrl(url: string): void {
+  this.supabaseUrl = url
 }
 
   setRules(rules: Rule[]): void {

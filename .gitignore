@@ -23,3 +23,5 @@ supabase/.temp
 # Editor
 # .vscode/settings.json
 .vscode/launch.json
+
+violations.md

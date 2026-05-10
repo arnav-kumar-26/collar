@@ -6,6 +6,7 @@ import { AnalysisResult, Rule, Violation } from './models'
 
 export interface CollarEvents {
   'file:saved':         { filePath: string; contents: string }
+  'file:manual':        { filePath: string; contents: string }
   'analysis:started':   { filePath: string; trigger: string }
   'analysis:complete':  { result: AnalysisResult; trigger: string }
   'violation:detected': { violations: Violation[] }
@@ -33,10 +34,10 @@ class EventBus {
   }
 
   off<K extends EventKey>(event: K, listener: Listener<K>): void {
-    const eventListeners = this.listeners[event] as Listener<K>[] | undefined
-    if (!eventListeners) return
-    this.listeners[event] = eventListeners.filter(l => l !== listener) as typeof eventListeners
-  }
+  const eventListeners = this.listeners[event] as Listener<K>[] | undefined
+  if (!eventListeners) return
+  ;(this.listeners as any)[event] = eventListeners.filter(l => l !== listener)
+}
 
   emit<K extends EventKey>(event: K, data: CollarEvents[K]): void {
     const eventListeners = this.listeners[event] as Listener<K>[] | undefined

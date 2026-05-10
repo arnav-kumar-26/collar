@@ -5,6 +5,7 @@ import { Violation } from '../../core/models'
 // ─── Status Bar ───────────────────────────────────────────────────────────────
 
 let statusBarItem: vscode.StatusBarItem
+let allViolations: Violation[] = []
 
 export function initStatusBar(): vscode.Disposable {
   statusBarItem = vscode.window.createStatusBarItem(
@@ -16,12 +17,16 @@ export function initStatusBar(): vscode.Disposable {
   statusBarItem.tooltip = 'Click to run Collar analysis'
   statusBarItem.show()
 
-  return statusBarItem
+  const autoFixButton = vscode.window.createStatusBarItem(
+  vscode.StatusBarAlignment.Right, 98
+  )
+  autoFixButton.text = '$(sparkle) Auto-fix'
+  autoFixButton.tooltip = 'Auto-fix all violations using Collar'
+  autoFixButton.command = 'collar.autoFix'
+  autoFixButton.show()
+
+  return vscode.Disposable.from(statusBarItem, autoFixButton)
 }
-
-// ─── Diagnostics (Problems Panel) ─────────────────────────────────────────────
-
-const diagnosticCollection = vscode.languages.createDiagnosticCollection('collar')
 
 // ─── Register All Notification Surfaces ──────────────────────────────────────
 
@@ -29,17 +34,27 @@ export function registerNotifications(): void {
 
   // Update all surfaces on every analysis result
   eventBus.on('analysis:complete', ({ result, trigger }) => {
-    const allViolations: Violation[] = []  // will be populated via violation:detected
     // Status bar always updates — even debounced saves
     updateStatusBar([])
   })
 
   eventBus.on('violation:detected', ({ violations }) => {
-    updateStatusBar(violations)
-    updateProblemsPanel(violations)
+
+    const incomingFiles = new Set(violations.map(v => v.file_path))
+    allViolations = [
+    ...allViolations.filter(v => !incomingFiles.has(v.file_path)),
+    ...violations,
+  ]
+
+    console.log(`[Collar] Total violations: ${allViolations.length}`)
+    allViolations.forEach(v => {
+      console.log(`  [${v.rule_id}] ${v.file_path}:${v.line_start} — ${v.explanation.slice(0, 60)}...`)
+    })
+
+    updateStatusBar(allViolations)
 
     // Popups only for critical violations, and only on commit or manual trigger
-    const criticals = violations.filter(v => v.rule_id.startsWith('SC') || isCritical(v))
+    const criticals = allViolations.filter(isCritical)
     if (criticals.length > 0) {
       showCriticalPopup(criticals)
     }
@@ -52,6 +67,12 @@ export function registerNotifications(): void {
 }
 
 // ─── Status Bar Updates ───────────────────────────────────────────────────────
+
+export function showOfflineState(): void {
+  statusBarItem.text = '$(cloud-offline) Collar: Offline'
+  statusBarItem.backgroundColor = undefined
+  statusBarItem.tooltip = 'No internet connection — analysis unavailable'
+}
 
 function updateStatusBar(violations: Violation[]): void {
   const critical = violations.filter(isCritical).length
@@ -88,39 +109,6 @@ function buildStatusText(critical: number, major: number, minor: number): string
   return `$(shield) ${parts.join('  ')}`
 }
 
-// ─── Problems Panel ───────────────────────────────────────────────────────────
-
-function updateProblemsPanel(violations: Violation[]): void {
-  diagnosticCollection.clear()
-
-  // Group by file
-  const byFile = new Map<string, Violation[]>()
-  for (const v of violations) {
-    byFile.set(v.file_path, [...(byFile.get(v.file_path) ?? []), v])
-  }
-
-  byFile.forEach((fileViolations, filePath) => {
-    const uri = vscode.Uri.file(filePath)
-    const diagnostics = fileViolations.map(v => {
-      const range = new vscode.Range(
-        new vscode.Position(Math.max(0, v.line_start - 1), 0),
-        new vscode.Position(Math.max(0, v.line_end - 1), Number.MAX_SAFE_INTEGER)
-      )
-
-      const diagnostic = new vscode.Diagnostic(
-        range,
-        `[${v.rule_id}] ${v.explanation}`,
-        toDiagnosticSeverity(v)
-      )
-      diagnostic.source = 'Collar'
-      diagnostic.code = v.rule_id
-      return diagnostic
-    })
-
-    diagnosticCollection.set(uri, diagnostics)
-  })
-}
-
 // ─── Critical Popup ───────────────────────────────────────────────────────────
 
 function showCriticalPopup(violations: Violation[]): void {
@@ -138,14 +126,6 @@ function showCriticalPopup(violations: Violation[]): void {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function isCritical(v: Violation): boolean {
-  // TODO: derive from rule severity once passed through
-  return false
-}
-function isMajor(v: Violation): boolean { return true }
-function isMinor(v: Violation): boolean { return false }
-
-function toDiagnosticSeverity(v: Violation): vscode.DiagnosticSeverity {
-  // TODO: derive from rule severity
-  return vscode.DiagnosticSeverity.Warning
-}
+function isCritical(v: Violation): boolean { return v.severity === 'critical' }
+function isMajor(v: Violation): boolean { return v.severity === 'major' }
+function isMinor(v: Violation): boolean { return v.severity === 'minor' }

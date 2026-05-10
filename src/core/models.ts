@@ -4,9 +4,9 @@ export type Severity = 'critical' | 'major' | 'minor'
 export type RuleCategory = 'business' | 'architectural' | 'security' | 'test'
 export type ViolationStatus = 'active' | 'resolved' | 'suppressed'
 export type SnapshotTrigger = 'commit' | 'rule_update' | 'manual'
-export type UserRole = 'admin' | 'author' | 'developer'
+export type UserRole = 'admin' | 'developer'
 export type BranchStatus = 'active' | 'merged' | 'deleted'
-export type LLMProvider = 'gemini' | 'anthropic'
+export type LLMProvider = 'gemini' | 'anthropic' | 'groq' | 'openrouter'
 
 // ─── Domain Models ───────────────────────────────────────────────────────────
 
@@ -36,6 +36,7 @@ export interface Violation {
   line_end: number
   code_excerpt: string
   explanation: string
+  severity: Severity
   status: ViolationStatus
   authored_by: string | null
   first_seen_sha: string
@@ -84,6 +85,7 @@ export interface AnalysisResult {
 // Shape the LLM returns inside the Edge Function
 export interface LLMViolation {
   rule_id: string
+  file_path?: string // optional in case the LLM can't determine it, but ideally should be provided by the plugin
   line_start: number
   line_end: number
   code_excerpt: string
@@ -98,7 +100,16 @@ export interface AnalysisPayload {
   branch: string
   commit_sha: string | null
   trigger: SnapshotTrigger | 'save' //save is debounced
-  provider?: LLMProvider        // ← add this line
+  provider?: LLMProvider        
+  summary?: string          // optional overall codebase summary to provide context for the LLM, set on debounced saves
+}
+
+export interface BatchAnalysisPayload {
+  files: { path: string; contents: string }[]
+  branch: string
+  commit_sha: string | null
+  trigger: SnapshotTrigger | 'save'
+  provider?: LLMProvider
 }
 
 // ─── Webview Messaging ───────────────────────────────────────────────────────

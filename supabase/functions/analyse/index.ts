@@ -25,17 +25,21 @@ const PROVIDERS = {
   gemini: {
     url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
   },
+  groq: {
+  url: 'https://api.groq.com/openai/v1/chat/completions',
+  model: 'llama-3.3-70b-versatile',
+  }
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface AnalysisPayload {
-  file_contents: string
-  file_path: string
+  file_contents: string       // ← revert back to single file
+  file_path: string           // ← revert back to single file
   branch: string
   commit_sha: string | null
   trigger: 'commit' | 'rule_update' | 'manual' | 'save'
-  provider?: 'gemini' | 'anthropic'    // ← add this line
+  provider?: 'gemini' | 'anthropic' | 'groq'
 }
 
 interface LLMViolation {
@@ -50,6 +54,7 @@ interface LLMViolation {
 // ─── Main Handler ─────────────────────────────────────────────────────────────
 
 serve(async (req: Request) => {
+  console.log('[Collar] Handler started') 
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       headers: {
@@ -98,6 +103,7 @@ serve(async (req: Request) => {
     try {
       rawText = await callLLM(activeProvider, prompt)
     } catch (err) {
+      console.error('[Collar] LLM call failed:', err.message)
       return jsonError(`LLM call failed: ${err.message}`, 502)
     }
 
@@ -106,7 +112,10 @@ serve(async (req: Request) => {
     let violations: LLMViolation[] = []
     try {
       const cleaned = rawText.replace(/^```json\s*/i, '').replace(/```\s*$/, '').trim()
-      violations = JSON.parse(cleaned).violations ?? []
+      violations = (JSON.parse(cleaned).violations ?? []).map((v: any) => ({
+        ...v,
+        code_excerpt: v.code_excerpt.replace(/^\d+:\s*/, '')
+      })) 
     } catch {
       console.error('[Collar] Failed to parse LLM response:', rawText)
       violations = []
@@ -185,7 +194,8 @@ async function callLLM(provider: string, prompt: string): Promise<string> {
   switch (provider) {
     case 'anthropic': return callAnthropic(prompt)
     case 'gemini':    return callGemini(prompt)
-    default:          throw new Error(`Unknown LLM_PROVIDER: "${provider}". Valid options: anthropic, gemini`)
+    case 'groq': return callGroq(prompt)
+    default:          throw new Error(`Unknown LLM_PROVIDER: "${provider}". Valid options: anthropic, gemini, groq`)
   }
 }
 
@@ -230,12 +240,40 @@ async function callGemini(prompt: string): Promise<string> {
   return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '{}'
 }
 
+async function callGroq(prompt: string): Promise<string> {
+  const apiKey = Deno.env.get('GROQ_API_KEY')
+  if (!apiKey) throw new Error('GROQ_API_KEY secret is not set in Supabase')
+
+  const res = await fetch(PROVIDERS.groq.url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: PROVIDERS.groq.model,
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.1,
+    }),
+  })
+
+  if (!res.ok) throw new Error(await res.text())
+  const data = await res.json()
+  return data.choices[0]?.message?.content ?? '{}'
+}
+
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
 function buildPrompt(rules: any[], filePath: string, fileContents: string): string {
   const rulesText = rules.map((r: any) =>
     `[${r.id}] (${r.category}, ${r.severity})\n${r.name}: ${r.description}`
   ).join('\n\n')
+
+  // Number each line so the LLM can identify exact positions without counting
+  const numberedContents = fileContents
+    .split('\n')
+    .map((line, i) => `${i + 1}: ${line}`)
+    .join('\n')
 
   return `You are a code validation agent. Your job is to identify violations of the given rules in the provided code.
 
@@ -248,13 +286,14 @@ ${rulesText}
 File path: ${filePath}
 
 \`\`\`
-${fileContents}
+${numberedContents}
 \`\`\`
 
 ## Instructions
 
 Analyse the code carefully against each rule. For each violation found:
-- Identify the exact line range
+- Identify the exact line range of the VIOLATING CODE ONLY — do not include comment lines
+- Line numbers must refer to the exact line where the violating code appears, not the comment describing it
 - Quote the violating code
 - Explain clearly and concisely why it violates the rule
 - Use the rule's own severity level

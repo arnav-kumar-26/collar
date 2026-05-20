@@ -124,6 +124,14 @@ function showCriticalPopup(violations: Violation[]): void {
   })
 }
 
+export function showAutofixProgress(message: string): void {
+  statusBarItem.text = `$(loading~spin) Collar: ${message}`
+}
+
+export function clearAutofixProgress(): void {
+  statusBarItem.text = '$(shield) Collar'
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function isCritical(v: Violation): boolean { return v.severity === 'critical' }

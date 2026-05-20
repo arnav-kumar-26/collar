@@ -124,11 +124,18 @@ export type ExtensionMessage =
   | { type: 'authDenied' }
   | { type: 'notSignedIn' }
   | { type: 'authSuccess'; data: User }
+  | { type: 'chatResponse'; data: { text: string } }
+  | { type: 'chatError'; data: { error: string } }
+
+export interface ChatHistoryEntry {
+  role: 'user' | 'assistant'
+  content: string
+}
 
 // Webview → Extension
 export type WebviewMessage =
   | { type: 'ready' }
-  | { type: 'chatMessage'; text: string; context?: { file: string; line: number } }
+  | { type: 'chatMessage'; text: string; history: ChatHistoryEntry[] }
   | { type: 'triggerAnalysis' }
   | { type: 'signIn' }
   | { type: 'signOut' }

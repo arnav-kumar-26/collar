@@ -1,83 +1,114 @@
-# Collar
+# Collar — Setup Guide
 
-LLM-powered code validation agent for VS Code. Validates code against business, architectural, security, and test rules in real time using Claude as the analysis engine.
+Collar is an LLM-powered code validation extension for VS Code. It analyses your
+code against your team's rules and flags violations in real time.
 
-## Prerequisites
+---
 
-- Node.js 18+
-- A Supabase project (see setup below)
-- VS Code
+## What you need
 
-## Getting Started
+- VS Code 1.85 or later
+- A Supabase account (free tier is fine) — https://supabase.com
+- A GitHub account (used for sign-in)
 
-```bash
-git clone <repo-url>
-cd collar
-npm install
-npm run build
-```
+---
 
-Then press `F5` in VS Code to launch the Extension Development Host.
+## Step 1 — Create your Supabase project
 
-## Supabase Setup (first time only)
+1. Go to https://app.supabase.com and create a new project
+2. Choose any name, region, and database password
+3. Wait for the project to finish provisioning (~1 minute)
 
-1. Create a new Supabase project at supabase.com
-2. In the SQL editor, run the contents of `supabase/schema.sql`
-3. Deploy the Edge Function:
-   ```bash
-   npx supabase functions deploy analyse
-   ```
-4. Add your Anthropic API key to Supabase Secrets:
-   ```bash
-   npx supabase secrets set ANTHROPIC_API_KEY=sk-ant-...
-   ```
-5. In the Supabase dashboard, insert a row into the `invitations` table for each developer's GitHub email before they sign in
+---
 
-## Inviting a Developer
+## Step 2 — Run the schema
 
-Insert a row directly into the `invitations` table in the Supabase dashboard:
+1. In your Supabase project, go to **SQL Editor** in the left sidebar
+2. Click **New query**
+3. Open the `schema.sql` file included with this package
+4. Paste the entire contents into the SQL editor
+5. Click **Run**
 
-| field | value |
-|---|---|
-| email | their GitHub email |
-| role | `developer` (or `admin` / `author`) |
-| status | `pending` |
+This creates all the tables, security policies, and seed rules Collar needs.
 
-They cannot sign in until this row exists.
+---
 
-## Project Structure
+## Step 3 — Add yourself to the invitations table
 
-```
-src/
-├── types/          Shared TypeScript types
-├── core/           Event bus, file watcher, git tracker, Supabase client
-├── services/       Abstraction layer — db.ts, auth.ts, realtime.ts
-│   └── interfaces/ IDatabase, IAuth, IRealtime
-├── features/       Self-contained features, communicate via event bus only
-│   ├── violation-detection/
-│   ├── notifications/
-│   └── git-integration/
-├── sidebar/        React sidebar — App shell + 4 tabs
-│   └── tabs/       Chat, Violations, Rules, History
-└── extension.ts    Entry point — wires everything together
+Collar requires an invitation before allowing sign-in. Add your GitHub email:
 
-supabase/
-├── schema.sql                    All tables, RLS policies, invitation trigger, seed rules
-└── functions/analyse/index.ts    Edge Function — calls Claude, writes violations
-```
+1. In Supabase, go to **Table Editor → invitations**
+2. Click **Insert row**
+3. Fill in:
+   - `email` — the email address linked to your GitHub account
+   - `role` — set to `developer` (or `admin` if you are managing the team)
+4. Save the row
 
-## Development
+> You can find your GitHub email at https://github.com/settings/emails
 
-```bash
-npm run watch    # rebuild on every file change
-```
+---
 
-## Architecture Rules
+## Step 4 — Install the extension
 
-- Features must never import from `@supabase/supabase-js` directly
-- Features must never import from other feature folders directly
-- All cross-feature communication goes through `eventBus`
-- Only `core/supabase.ts` instantiates the Supabase client
-- Only `services/` files import from `core/supabase.ts`
+1. Open VS Code
+2. Go to the Extensions panel (`Ctrl+Shift+X` / `Cmd+Shift+X`)
+3. Click the `···` menu at the top right of the Extensions panel
+4. Select **Install from VSIX...**
+5. Choose the `collar-0.1.0.vsix` file
 
-Violating these rules breaks the migration path to AWS.
+---
+
+## Step 5 — Connect to your Supabase project
+
+When you first open the Collar sidebar (shield icon in the activity bar), it will
+ask for two values from your Supabase project.
+
+To find them:
+
+1. In Supabase, go to **Project Settings → API**
+2. Copy the **Project URL** — looks like `https://xxxx.supabase.co`
+3. Copy the **anon public** key under Project API keys
+
+Paste these into the prompts VS Code shows. They are stored securely in VS Code's
+secret storage and never shared.
+
+---
+
+## Step 6 — Sign in
+
+1. Click **Sign in with GitHub** in the Collar sidebar
+2. Your browser opens and asks you to authorise with GitHub
+3. After authorising, VS Code reopens and Collar activates
+
+If you see "Access denied", check that the email on your GitHub account matches
+the one you added to the invitations table in Step 3.
+
+---
+
+## What happens next
+
+Once signed in, Collar automatically scans your workspace and highlights any
+violations of your team's rules. Violations appear:
+
+- As coloured underlines in the editor
+- In the **Violations** tab in the Collar sidebar
+- In a `violations.md` file written to your workspace root
+
+You can ask Collar to explain any violation using the **Chat** tab, or click
+**✨ Auto-fix** in the status bar to attempt automatic fixes.
+
+---
+
+## Troubleshooting
+
+**"No credentials" on startup** — Re-enter your Supabase URL and anon key using
+the command palette: `Collar: Clear Credentials`, then restart VS Code.
+
+**"Session expired"** — Click Sign In again. Sessions last 1 hour by default.
+
+**No violations detected** — Make sure your workspace folder is open (not just a
+single file). Collar requires an open folder to scan.
+
+**Auto-fix made a mistake** — Use `git checkout .` to revert all changes if you
+committed before running Auto-fix. Individual file changes can be undone with
+`Ctrl+Z` / `Cmd+Z`.

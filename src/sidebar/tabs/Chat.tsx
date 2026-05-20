@@ -37,6 +37,32 @@ export default function ChatTab({ violations, rules, user }: Props) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Listen for chat responses from the extension
+  useEffect(() => {
+    const handler = (event: MessageEvent) => {
+      const message = event.data
+      if (message?.type === 'chatResponse') {
+        setIsThinking(false)
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          text: message.data.text,
+          timestamp: new Date(),
+        }])
+      } else if (message?.type === 'chatError') {
+        setIsThinking(false)
+        setMessages(prev => [...prev, {
+          id: Date.now().toString(),
+          role: 'assistant',
+          text: `Sorry, something went wrong: ${message.data.error}`,
+          timestamp: new Date(),
+        }])
+      }
+    }
+    window.addEventListener('message', handler)
+    return () => window.removeEventListener('message', handler)
+  }, [])
+
   // Auto-resize textarea
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
@@ -55,6 +81,11 @@ export default function ChatTab({ violations, rules, user }: Props) {
       timestamp: new Date(),
     }
 
+    const history = messages.map(m => ({
+      role: m.role,
+      content: m.text,
+    }))
+
     setMessages(prev => [...prev, userMessage])
     setInput('')
     setIsThinking(true)
@@ -63,22 +94,11 @@ export default function ChatTab({ violations, rules, user }: Props) {
       textareaRef.current.style.height = 'auto'
     }
 
-    // Send to extension host — it forwards to the Edge Function / LLM
-    vscode.postMessage({ type: 'chatMessage', text: text.trim() })
-
-    // Listen for the response (single message listener for this send)
-    // In production this would be handled by the App-level message listener
-    // and passed down as a prop. For now, simulating:
-    setTimeout(() => {
-      setIsThinking(false)
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        text: 'This is where the LLM response will appear. The chat feature calls the Edge Function and streams the explanation back here.',
-        timestamp: new Date(),
-      }
-      setMessages(prev => [...prev, assistantMessage])
-    }, 1500)
+    vscode.postMessage({
+      type: 'chatMessage',
+      text: text.trim(),
+      history,
+    })
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -196,6 +216,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   bubble: {
     maxWidth: '85%',
+    minWidth: 0,
     padding: '8px 12px',
     borderRadius: 8,
     display: 'flex',
@@ -213,7 +234,7 @@ const styles: Record<string, React.CSSProperties> = {
     alignSelf: 'flex-start',
     borderBottomLeftRadius: 2,
   },
-  bubbleText: { fontSize: 12, lineHeight: 1.6 },
+  bubbleText: { fontSize: 12, lineHeight: 1.6, overflowWrap: 'break-word', wordBreak: 'break-word' },
   timestamp: { fontSize: 9, opacity: 0.5, alignSelf: 'flex-end' },
   composer: {
     borderTop: '1px solid var(--vscode-panel-border)',

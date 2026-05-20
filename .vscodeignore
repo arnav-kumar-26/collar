@@ -1,0 +1,7 @@
+node_modules/
+src/
+supabase/
+.vscode/
+esbuild.js
+tsconfig.json
+.gitignore

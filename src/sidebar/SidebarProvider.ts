@@ -1,6 +1,6 @@
 import * as vscode from 'vscode'
 import { eventBus } from '../core/eventBus'
-import { ExtensionMessage, WebviewMessage, User, Violation, Rule } from '../core/models'
+import { ExtensionMessage, WebviewMessage, User, Violation, Rule, ChatHistoryEntry } from '../core/models'
 
 // ─── SidebarProvider ─────────────────────────────────────────────────────────
 // Manages the Webview lifecycle.
@@ -93,13 +93,64 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         break
 
       case 'chatMessage':
-        // Handled by the chat feature (future: route through event bus)
-        console.log('[Collar] Chat message received:', message.text)
+        this.handleChatMessage(message.text, message.history)
         break
     }
   }
 
   // ── Outbound (Extension → Webview) ────────────────────────────────────────
+
+  private async handleChatMessage(text: string, history: ChatHistoryEntry[]): Promise<void> {
+    console.log('[Collar] Chat message received:', text)
+    try {
+      const { getSupabaseClient } = await import('../services/supabase/client')
+      const { getCodebaseSummary } = await import('../features/violation-detection')
+
+      const session = await getSupabaseClient().auth.getSession()
+      const token = session.data.session?.access_token
+
+      const response = await fetch(`${this.supabaseUrl}/functions/v1/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message: text,
+          history,
+          context: {
+            codebase_summary: getCodebaseSummary(),
+            rules: this.state.rules.map(r => ({
+              id: r.id,
+              name: r.name,
+              severity: r.severity,
+              description: r.description,
+            })),
+            violations: this.state.violations.map(v => ({
+              rule_id: v.rule_id,
+              file_path: v.file_path,
+              line_start: v.line_start,
+              severity: v.severity,
+              explanation: v.explanation,
+              code_excerpt: v.code_excerpt,
+            })),
+          },
+          provider: 'groq',
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`Chat Edge Function returned ${response.status}`)
+      }
+
+      const data = await response.json() as { response: string }
+      this.send({ type: 'chatResponse', data: { text: data.response } })
+
+    } catch (err) {
+      console.error('[Collar] Chat failed:', err)
+      this.send({ type: 'chatError', data: { error: (err as Error).message } })
+    }
+  }
 
   private send(message: ExtensionMessage): void {
     this.view?.webview.postMessage(message)

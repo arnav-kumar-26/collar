@@ -2,7 +2,7 @@ import * as vscode from 'vscode'
 import { eventBus } from '../../core/eventBus'
 import { AnalysisPayload, AnalysisResult, LLMViolation, Violation, BatchAnalysisPayload, LLMProvider, Rule, Severity } from '../../core/models'
 import { getCurrentBranch, getCurrentCommit } from '../../core/gitTracker'
-import { showOfflineState } from '../notifications'
+import { showOfflineState, showAutofixProgress, clearAutofixProgress } from '../notifications'
 
 let supabaseUrl = ''
 let codebaseSummary = ''  // ← store the latest codebase summary for context in debounced saves
@@ -33,6 +33,10 @@ let rules: Rule[] = []
 
 export function initRules(r: Rule[]): void {
   rules = r
+}
+
+export function getCodebaseSummary(): string {
+  return codebaseSummary
 }
 
 // ─── Register Listeners ───────────────────────────────────────────────────────
@@ -374,86 +378,127 @@ export async function runAutoFix(): Promise<void> {
     byFile.get(v.file_path)!.push(v)
   }
 
-  vscode.window.showInformationMessage(
-    `Collar: Auto-fixing violations across ${byFile.size} file(s)...`
-  )
+await vscode.window.withProgress(
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: 'Collar: Auto-fix',
+      cancellable: false,
+    },
+    async (progress) => {
+      const total = byFile.size
+      let fileIndex = 0
+      let fixedCount = 0
+      let skippedCount = 0
 
-  const { getSupabaseClient } = await import('../../services/supabase/client')
-  const session = await getSupabaseClient().auth.getSession()
-  const token = session.data.session?.access_token
+      showAutofixProgress('Starting...')
 
-  let fixedCount = 0
-  let skippedCount = 0
+      const { getSupabaseClient } = await import('../../services/supabase/client')
+      const session = await getSupabaseClient().auth.getSession()
+      const token = session.data.session?.access_token
 
-  for (const [filePath, fileViolations] of byFile) {
-    try {
-      const doc = await vscode.workspace.openTextDocument(filePath)
-      const fileContents = doc.getText()
+      for (const [filePath, fileViolations] of byFile) {
+        fileIndex++
+        const relativePath = vscode.workspace.asRelativePath(filePath)
 
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/autofix`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify({
-            file_path: vscode.workspace.asRelativePath(filePath),
-            file_contents: fileContents,
-            violations: fileViolations.map(v => ({
-              rule_id: v.rule_id,
-              code_excerpt: v.code_excerpt,
-              explanation: v.explanation,
-              severity: v.severity,
-            })),
-            provider: AUTOFIX_PROVIDER,
-          }),
+        progress.report({
+          message: `${relativePath} (${fileIndex} of ${total})`,
+          increment: 100 / total,
+        })
+        showAutofixProgress(`Fixing ${relativePath} (${fileIndex}/${total})`)
+
+        try {
+          const doc = await vscode.workspace.openTextDocument(filePath)
+          const fileContents = doc.getText()
+
+          const response = await fetch(
+            `${supabaseUrl}/functions/v1/autofix`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                file_path: relativePath,
+                file_contents: fileContents,
+                violations: fileViolations.map(v => ({
+                  rule_id: v.rule_id,
+                  code_excerpt: v.code_excerpt,
+                  explanation: v.explanation,
+                  severity: v.severity,
+                })),
+                provider: AUTOFIX_PROVIDER,
+              }),
+            }
+          )
+
+          if (!response.ok) {
+            console.error(`[Collar] Autofix returned ${response.status} for ${filePath}`)
+            progress.report({ message: `${relativePath} — failed (${response.status})` })
+            continue
+          }
+
+          const { fixes } = await response.json() as {
+            fixes: { original: string; replacement: string }[]
+          }
+
+          if (!fixes?.length) {
+            progress.report({ message: `${relativePath} — no fixes returned` })
+            continue
+          }
+
+          let updatedContents = fileContents
+
+          for (const fix of fixes) {
+            if (updatedContents.includes(fix.original)) {
+              updatedContents = updatedContents.replace(fix.original, fix.replacement)
+              fixedCount++
+              continue
+            }
+
+            const normalise = (s: string) =>
+              s.split('\n').map(l => l.trimEnd()).join('\n')
+
+            const normalisedContents = normalise(updatedContents)
+            const normalisedOriginal = normalise(fix.original)
+
+            if (normalisedContents.includes(normalisedOriginal)) {
+              const idx = normalisedContents.indexOf(normalisedOriginal)
+              const actual = updatedContents.substring(idx, idx + fix.original.length)
+              updatedContents = updatedContents.replace(actual, fix.replacement)
+              fixedCount++
+              console.log(`[Collar] Matched with normalised whitespace in ${relativePath}`)
+            } else {
+              console.warn(`[Collar] Could not match block in ${filePath} — skipping: ${fix.original.substring(0, 60)}`)
+              skippedCount++
+            }
+          }
+
+          if (updatedContents !== fileContents) {
+            const edit = new vscode.WorkspaceEdit()
+            const fullRange = new vscode.Range(
+              doc.lineAt(0).range.start,
+              doc.lineAt(doc.lineCount - 1).range.end
+            )
+            edit.replace(doc.uri, fullRange, updatedContents)
+            await vscode.workspace.applyEdit(edit)
+            await doc.save()
+            progress.report({ message: `${relativePath} — done` })
+          }
+
+        } catch (err) {
+          console.error(`[Collar] Autofix failed for ${filePath}:`, err)
+          progress.report({ message: `${relativePath} — error` })
         }
-      )
-
-      if (!response.ok) {
-        console.error(`[Collar] Autofix returned ${response.status} for ${filePath}`)
-        continue
       }
 
-      const { fixes } = await response.json() as {
-        fixes: { original: string; replacement: string }[]
-      }
+      clearAutofixProgress()
 
-      if (!fixes?.length) continue
-
-      let updatedContents = fileContents
-
-      for (const fix of fixes) {
-        if (!updatedContents.includes(fix.original)) {
-          console.warn(`[Collar] Could not match block in ${filePath} — skipping: ${fix.original.substring(0, 60)}`)
-          skippedCount++
-          continue
-        }
-        updatedContents = updatedContents.replace(fix.original, fix.replacement)
-        fixedCount++
-      }
-
-      if (updatedContents !== fileContents) {
-        const edit = new vscode.WorkspaceEdit()
-        const fullRange = new vscode.Range(
-          doc.lineAt(0).range.start,
-          doc.lineAt(doc.lineCount - 1).range.end
-        )
-        edit.replace(doc.uri, fullRange, updatedContents)
-        await vscode.workspace.applyEdit(edit)
-        await doc.save()
-      }
-
-    } catch (err) {
-      console.error(`[Collar] Autofix failed for ${filePath}:`, err)
+      const msg = [`Auto-fix complete. ${fixedCount} fix(es) applied.`]
+      if (skippedCount > 0) msg.push(`${skippedCount} could not be matched and were skipped.`)
+      vscode.window.showInformationMessage(`Collar: ${msg.join(' ')}`)
     }
-  }
-
-  const msg = [`Collar: Auto-fix complete. ${fixedCount} fix(es) applied.`]
-  if (skippedCount > 0) msg.push(`${skippedCount} could not be matched and were skipped.`)
-  vscode.window.showInformationMessage(msg.join(' '))
+  )
 }
 
 async function getWorkspaceFiles(): Promise<{ path: string; contents: string }[]> {

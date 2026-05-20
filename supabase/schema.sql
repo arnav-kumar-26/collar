@@ -12,14 +12,14 @@ CREATE TABLE public.users (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
   email       TEXT NOT NULL UNIQUE,
-  role        TEXT NOT NULL CHECK (role IN ('admin', 'author', 'developer')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'developer')),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.invitations (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email       TEXT NOT NULL UNIQUE,
-  role        TEXT NOT NULL CHECK (role IN ('admin', 'author', 'developer')),
+  role TEXT NOT NULL CHECK (role IN ('admin', 'developer')),
   invited_by  UUID REFERENCES public.users(id),
   status      TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'revoked')),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -222,14 +222,14 @@ CREATE TRIGGER on_auth_user_created
 -- Insert your initial rule set before testing.
 -- Rules are managed here (or via Supabase dashboard), not via the plugin.
 
-INSERT INTO public.rules (id, category, name, description, severity, status) VALUES
-  ('BR-001', 'business',      'Consent Before Payment',       'Payment operations must verify user consent before execution. The consent flag must be checked and confirmed true before any call to processPayment or similar functions.', 'critical', 'active'),
-  ('BR-002', 'business',      'Idempotency Keys Required',    'All payment and order mutation endpoints must include an idempotency key to prevent duplicate operations on retry.', 'major', 'active'),
-  ('AR-001', 'architectural', 'No UI to DB Direct Calls',     'UI layer components must not import from or call database modules directly. All data access must go through a service or API layer.', 'critical', 'active'),
-  ('AR-002', 'architectural', 'Feature Folder Isolation',     'Files inside a feature folder must not import from another feature folder directly. Cross-feature communication must go through the event bus.', 'major', 'active'),
-  ('AR-003', 'architectural', 'No Supabase in Features',      'Feature files must not import @supabase/supabase-js or the Supabase client directly. They must only import from services/db, services/auth, or services/realtime.', 'critical', 'active'),
-  ('SC-001', 'security',      'No Secrets in Source',         'API keys, passwords, tokens, and connection strings must not appear as string literals in source code. Use environment variables or a secrets manager.', 'critical', 'active'),
-  ('SC-002', 'security',      'Input Sanitisation Required',  'All user-supplied input that is used in database queries, shell commands, or rendered as HTML must be sanitised or parameterised before use.', 'critical', 'active'),
-  ('SC-003', 'security',      'JWT Expiry Must Be Set',       'JWT tokens issued by this service must include an expiry claim (exp). Tokens without expiry are a security risk.', 'major', 'active'),
-  ('TS-001', 'test',          'No Empty Test Blocks',         'Test blocks (it, test, describe) must contain at least one assertion. Empty test blocks give false confidence and must be removed or completed.', 'major', 'active'),
-  ('TS-002', 'test',          'Meaningful Assertions',        'Tests must assert on specific values or behaviours, not just that a function was called. Assertions like expect(true).toBe(true) are not meaningful.', 'minor', 'active');
+-- INSERT INTO public.rules (id, category, name, description, severity, status) VALUES
+--   ('BR-001', 'business',      'Consent Before Payment',       'Payment operations must verify user consent before execution. The consent flag must be checked and confirmed true before any call to processPayment or similar functions.', 'critical', 'active'),
+--   ('BR-002', 'business',      'Idempotency Keys Required',    'All payment and order mutation endpoints must include an idempotency key to prevent duplicate operations on retry.', 'major', 'active'),
+--   ('AR-001', 'architectural', 'No UI to DB Direct Calls',     'UI layer components must not import from or call database modules directly. All data access must go through a service or API layer.', 'critical', 'active'),
+--   ('AR-002', 'architectural', 'Feature Folder Isolation',     'Files inside a feature folder must not import from another feature folder directly. Cross-feature communication must go through the event bus.', 'major', 'active'),
+--   ('AR-003', 'architectural', 'No Supabase in Features',      'Feature files must not import @supabase/supabase-js or the Supabase client directly. They must only import from services/db, services/auth, or services/realtime.', 'critical', 'active'),
+--   ('SC-001', 'security',      'No Secrets in Source',         'API keys, passwords, tokens, and connection strings must not appear as string literals in source code. Use environment variables or a secrets manager.', 'critical', 'active'),
+--   ('SC-002', 'security',      'Input Sanitisation Required',  'All user-supplied input that is used in database queries, shell commands, or rendered as HTML must be sanitised or parameterised before use.', 'critical', 'active'),
+--   ('SC-003', 'security',      'JWT Expiry Must Be Set',       'JWT tokens issued by this service must include an expiry claim (exp). Tokens without expiry are a security risk.', 'major', 'active'),
+--   ('TS-001', 'test',          'No Empty Test Blocks',         'Test blocks (it, test, describe) must contain at least one assertion. Empty test blocks give false confidence and must be removed or completed.', 'major', 'active'),
+--   ('TS-002', 'test',          'Meaningful Assertions',        'Tests must assert on specific values or behaviours, not just that a function was called. Assertions like expect(true).toBe(true) are not meaningful.', 'minor', 'active');

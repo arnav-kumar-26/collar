@@ -9,9 +9,9 @@ const PROVIDERS = {
     url: 'https://api.groq.com/openai/v1/chat/completions',
     model: 'llama-3.3-70b-versatile',
   },
-    openrouter: {
-    url: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'anthropic/claude-3.5-sonnet',  // best for code fixing
+  openrouter: {
+  url: 'https://openrouter.ai/api/v1/chat/completions',
+  model: 'qwen/qwen3-coder:free',
   }
 }
 
@@ -64,7 +64,7 @@ serve(async (req: Request) => {
     if (!userRecord) return jsonError('Not a team member', 403)
 
     const payload: AutofixPayload = await req.json()
-    const { file_path, file_contents, violations, provider = 'gemini' } = payload
+    const { file_path, file_contents, violations, provider = 'openrouter' } = payload
 
     console.log(`[Collar Autofix] Fixing ${violations.length} violations in ${file_path}`)
 
@@ -143,14 +143,33 @@ ${fileContents}
 
 async function callLLM(provider: string, prompt: string): Promise<string> {
   switch (provider) {
-    case 'gemini':      return callGemini(prompt)
-    case 'groq':        return callGroq(prompt)
-    case 'openrouter':  return callOpenRouter(prompt)
-    default:            throw new Error(`Unknown provider: "${provider}"`)
+    case 'openrouter': return callWithFallback(prompt)
+    case 'gemini':     return callGemini(prompt)
+    case 'groq':       return callGroq(prompt)
+    default:           throw new Error(`Unknown provider: "${provider}"`)
   }
 }
 
-async function callOpenRouter(prompt: string): Promise<string> {
+async function callWithFallback(prompt: string): Promise<string> {
+  const providers = [
+    { name: 'Qwen3 Coder',    fn: () => callOpenRouter(prompt, 'qwen/qwen3-coder:free') },
+    { name: 'Llama 3.3 70B',  fn: () => callOpenRouter(prompt, 'meta-llama/llama-3.3-70b-instruct:free') },
+    { name: 'Gemini',         fn: () => callGemini(prompt) },
+  ]
+
+  for (const provider of providers) {
+    try {
+      console.log(`[Collar Autofix] Trying ${provider.name}`)
+      return await provider.fn()
+    } catch (err) {
+      console.warn(`[Collar Autofix] ${provider.name} failed: ${err.message} — trying next`)
+    }
+  }
+
+  throw new Error('All providers exhausted')
+}
+
+async function callOpenRouter(prompt: string, model?: string): Promise<string> {
   const apiKey = Deno.env.get('OPENROUTER_KEY')
   if (!apiKey) throw new Error('OPENROUTER_KEY not set')
 
@@ -161,7 +180,7 @@ async function callOpenRouter(prompt: string): Promise<string> {
       'Authorization': `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: PROVIDERS.openrouter.model,
+      model: model ?? PROVIDERS.openrouter.model,
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.1,
     }),

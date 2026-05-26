@@ -1,4 +1,4 @@
-# Collar — Setup Guide
+# Collar — Setup Guide (Outdated)
 
 Collar is an LLM-powered code validation extension for VS Code. It analyses your
 code against your team's rules and flags violations in real time.
